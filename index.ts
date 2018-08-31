@@ -6,6 +6,7 @@ import * as prettier from 'prettier'
 import * as jsdiff from 'diff'
 import * as colors from 'colors/safe'
 import * as glob from 'glob'
+import { isArray } from 'util'
 
 const prettifyCode = (code: string) =>
     prettier.format(code, {
@@ -19,6 +20,7 @@ const prettifyCode = (code: string) =>
 type MatchedFile = {
     path: string
     summary?: string[]
+    code?: SourceCode
 }
 
 type Line = {
@@ -31,17 +33,147 @@ type LineRange = {
     end: number
 }
 
-export class SourceCode {
-    private ast: ts.SourceFile
-    private source: string
+interface ISourceCode {
+    source: string
+    summarize(match: any[] | string | any): any
+    logDiff(): void
+    match(selector: string): boolean
+    modifyParent(options: {
+        selector: string
+        action: (result: any) => void
+    }): void
+    stringify(): string
+    logDiff(): void
+    query(selector: string): any[]
+}
+
+class SourceCodeList implements ISourceCode {
+    list: SourceCode[]
+
+    get source(): string {
+        return this.list
+            .map((s, idx) => `${idx}: '${s.source}'`)
+            .join('\n----\n')
+    }
+
+    constructor(list: any[]) {
+        this.list = list
+    }
+
+    public summarize(match: any[] | string | any): any {
+        if (!this.list) return []
+
+        return this.list.map(l => l.summarize(match))
+    }
+
+    public logDiff() {
+        if (!this.list) return
+
+        this.list.forEach(l => l.logDiff())
+    }
+
+    public match(selector: string): boolean {
+        if (!this.list) return false
+
+        return this.list.map(l => l.match(selector)).filter(l => !!l).length > 0
+    }
+
+    public modifyParent(options: {
+        selector: string
+        action: (result: any) => void
+    }): void {
+        if (!this.list) return
+
+        this.list.forEach(l => l.modifyParent(options))
+    }
+
+    public query(selector: string): any[] {
+        let results = []
+
+        this.list.forEach(l => {
+            results = results.concat(l.query(selector))
+        })
+
+        return results
+    }
+
+    public stringify(): string {
+        if (!this.list) return ''
+
+        return this.list.map(l => l.stringify()).join('-----\n')
+    }
+}
+
+export class SourceCode implements ISourceCode {
+    ast: ts.SourceFile
+    source: string
     private printer: ts.Printer
     private result: ts.SourceFile
     fullPath: string
     filename: string
+    document: ts.SourceFile
+    type: 'ts' | 'tsx'
+
+    constructor(source, type: 'ts' | 'tsx') {
+        this.type = type
+        if (typeof source == 'string') {
+            this.source = source
+            this.ast = ts.createSourceFile(
+                '',
+                source,
+                ts.ScriptTarget.Latest,
+                true,
+                type == 'tsx' ? ts.ScriptKind.TSX : ts.ScriptKind.TS
+            )
+        } else {
+            this.ast = source
+        }
+
+        this.printer = ts.createPrinter({
+            newLine: ts.NewLineKind.LineFeed,
+            removeComments: false,
+        })
+
+        this.result = ts.createSourceFile(
+            'Output!',
+            '',
+            ts.ScriptTarget.Latest,
+            false,
+            ts.ScriptKind.TS
+        )
+    }
+
+    static identifier(id: string) {
+        return SourceCode.extractFirst(
+            `Identifier[text="${id}"]`,
+            `
+                import { ${id} } from "_"
+            `
+        )
+    }
+
+    static arrowFunction(func: string) {
+        return SourceCode.extractFirst(`ArrowFunction`, func)
+    }
+
+    static fromAst(ast) {
+        let c = new SourceCode('', 'ts')
+    }
+
+    static extractFirst(selector: string, source: string) {
+        return SourceCode.extract(selector, source)[0]
+    }
+
+    static extract(selector: string, source: string) {
+        return tsquery(source, selector)
+    }
 
     static fromFile(filename: string) {
         let source = fs.readFileSync(filename, 'utf8')
-        let result = new SourceCode(source)
+        let result = new SourceCode(
+            source,
+            filename.match(/\.tsx$/) ? 'tsx' : 'ts'
+        )
 
         result.fullPath = filename
         result.filename = path.basename(filename)
@@ -85,6 +217,7 @@ export class SourceCode {
                     let code = SourceCode.fromFile(file.path)
                     let r = code.query(options.selector)
                     if (!!r && r.length > 0) {
+                        file.code = code
                         try {
                             file.summary = r.map(m => code.summarize(m))
                         } catch (e) {}
@@ -100,7 +233,60 @@ export class SourceCode {
         return files
     }
 
-    public summarize(match: any) {
+    public SC(input: any): ISourceCode {
+        if (typeof input == 'string') {
+            input = this.query(input)
+        }
+
+        if (isArray(input) && input.length > 1) {
+            let items: SourceCode[] = []
+            for (let item of input) {
+                let s = new SourceCode(item, this.type)
+                s.source = this.source.slice(item.pos, item.end)
+                if (this.document) {
+                    s.document = this.document
+                } else {
+                    s.document = this.ast
+                }
+
+                items.push(s)
+            }
+
+            return new SourceCodeList(items)
+        }
+
+        let ast
+        if (isArray(input)) {
+            ast = input[0]
+        } else {
+            ast = input
+        }
+
+        let result = new SourceCode(ast, this.type)
+        result.source = this.source.slice(ast.pos, ast.end)
+        if (this.document) {
+            result.document = this.document
+        } else {
+            result.document = this.ast
+        }
+
+        return result
+    }
+
+    public summarize(match: any[] | string | any) {
+        if (typeof match == 'string') {
+            let matches = this.query(match)
+            if (matches && matches.length > 0) {
+                return matches.map(m => this.summarize(m))
+            } else {
+                return []
+            }
+        }
+
+        if (isArray(match)) {
+            return match.map(m => this.summarize(m))
+        }
+
         let start = match.pos
         let end = match.end
         let context = 3
@@ -140,44 +326,11 @@ export class SourceCode {
             }
         }
 
-        this.source.slice(start - context, end + context)
-
         let result = colors.dim(this.source.slice(contextStart, start))
         result += colors.green(this.source.slice(start, end))
         result += colors.dim(this.source.slice(end, contextEnd))
 
         return result
-    }
-
-    static extractFirst(selector: string, source: string) {
-        return SourceCode.extract(selector, source)[0]
-    }
-
-    static extract(selector: string, source: string) {
-        return tsquery(source, selector)
-    }
-
-    constructor(source) {
-        this.source = source
-        this.ast = ts.createSourceFile(
-            '',
-            source,
-            ts.ScriptTarget.Latest,
-            true,
-            ts.ScriptKind.TS
-        )
-        this.printer = ts.createPrinter({
-            newLine: ts.NewLineKind.LineFeed,
-            removeComments: false,
-        })
-
-        this.result = ts.createSourceFile(
-            'Output!',
-            '',
-            ts.ScriptTarget.Latest,
-            false,
-            ts.ScriptKind.TS
-        )
     }
 
     public match(selector: string): boolean {
@@ -215,8 +368,18 @@ export class SourceCode {
     }
 
     public stringify() {
-        let result = this.printer.printFile(this.ast)
-        var diff = jsdiff.diffChars(this.source, result)
+        let result: string = ''
+        if (this.filename) {
+            result = this.printer.printFile(this.ast)
+        } else {
+            result = this.printer.printNode(
+                ts.EmitHint.Unspecified,
+                this.ast,
+                this.document
+            )
+        }
+
+        var diff = jsdiff.diffLines(this.source, result)
 
         var output = ''
         diff.forEach(function(part) {
@@ -233,6 +396,12 @@ export class SourceCode {
             return output
         } catch (e) {
             return output
+        }
+    }
+
+    public saveChanges() {
+        if (this.fullPath) {
+            this.writeToFile(this.fullPath)
         }
     }
 
@@ -293,8 +462,8 @@ export class SourceCode {
                     continue
                 } else {
                     v = `${spacer}${spacer} ${v}`
-                    if (type == 'add') v = colors.green(v)
-                    if (type == 'remove') v = colors.red(v)
+                    // if (type == 'add') v = colors.green(v)
+                    // if (type == 'remove') v = colors.red(v)
 
                     result.push({
                         value: v,
@@ -344,7 +513,6 @@ export class SourceCode {
             return consolidated
         }, [])
 
-        console.log(ranges)
         let context = 3
         for (let r of ranges) {
             console.log(
@@ -356,13 +524,22 @@ export class SourceCode {
                 r.start - context < 0 ? 0 : r.start - context,
                 r.start
             )
-            console.log(before.map(v => v.value).join('\n'))
+            console.log(before.map(v => colors.black(v.value)).join('\n'))
 
             let content = allLines.slice(r.start, r.end + 1)
-            console.log(content.map(v => v.value).join('\n'))
+            console.log(
+                content
+                    .map(
+                        v =>
+                            v.type == 'add'
+                                ? colors.green(v.value)
+                                : colors.red(v.value)
+                    )
+                    .join('\n')
+            )
 
             let after = allLines.slice(r.end + 1, r.end + context + 1)
-            console.log(after.map(v => v.value).join('\n'))
+            console.log(after.map(v => colors.black(v.value)).join('\n'))
         }
     }
 }

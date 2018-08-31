@@ -2,7 +2,7 @@
 
 ## Example
 
-```
+```typescript
 import * as path from 'path'
 import { SourceCode } from 'underhill'
 

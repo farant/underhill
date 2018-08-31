@@ -236,7 +236,9 @@ export class SourceCode {
         let context = 3
         for (let r of ranges) {
             console.log(
-                colors.cyan(`\n@@ ${this.fullPath.replace(__dirname, '.')}\n`)
+                colors.cyan(
+                    `\n@@ ${this.fullPath.replace(path.resolve('./'), '.')}\n`
+                )
             )
             let before = allLines.slice(
                 r.start - context < 0 ? 0 : r.start - context,

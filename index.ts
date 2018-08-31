@@ -5,6 +5,7 @@ import { tsquery } from '@phenomnomnominal/tsquery'
 import * as prettier from 'prettier'
 import * as jsdiff from 'diff'
 import * as colors from 'colors/safe'
+import * as glob from 'glob'
 
 const prettifyCode = (code: string) =>
     prettier.format(code, {
@@ -14,6 +15,11 @@ const prettifyCode = (code: string) =>
         trailingComma: 'es5',
         parser: 'typescript',
     })
+
+type MatchedFile = {
+    path: string
+    summary?: string[]
+}
 
 type Line = {
     value: string
@@ -33,12 +39,112 @@ export class SourceCode {
     fullPath: string
     filename: string
 
-    static fromFile(filename) {
+    static fromFile(filename: string) {
         let source = fs.readFileSync(filename, 'utf8')
         let result = new SourceCode(source)
 
         result.fullPath = filename
         result.filename = path.basename(filename)
+
+        return result
+    }
+
+    static async searchFiles(
+        root: string,
+        options: {
+            selector?: string
+        } = null
+    ): Promise<MatchedFile[]> {
+        let files = await new Promise<MatchedFile[]>((resolve, reject) => {
+            glob(
+                '**/*.ts?(x)',
+                {
+                    cwd: root,
+                    ignore: ['**/node_modules/**/*'],
+                },
+                (er, files) => {
+                    if (er) {
+                        reject(er)
+                        return
+                    }
+
+                    resolve(
+                        files.map(f => ({
+                            path: path.join(root, f),
+                        }))
+                    )
+                }
+            )
+        })
+
+        if (options && options.selector) {
+            let result: MatchedFile[] = []
+
+            for (let file of files) {
+                try {
+                    let code = SourceCode.fromFile(file.path)
+                    let r = code.query(options.selector)
+                    if (!!r && r.length > 0) {
+                        try {
+                            file.summary = r.map(m => code.summarize(m))
+                        } catch (e) {}
+
+                        result.push(file)
+                    }
+                } catch (e) {}
+            }
+
+            return result
+        }
+
+        return files
+    }
+
+    public summarize(match: any) {
+        let start = match.pos
+        let end = match.end
+        let context = 3
+        let contextStart, contextEnd
+
+        let matchedBefore = 0
+        for (let i = start; i >= 0; i--) {
+            if (this.source[i] == '\n') {
+                matchedBefore += 1
+            }
+
+            if (matchedBefore == context + 1) {
+                contextStart = i + 1
+                break
+            }
+
+            if (i - 1 < 0) {
+                contextStart = 0
+                break
+            }
+        }
+
+        let matchedAfter = 0
+        for (let i = end; i < this.source.length; i++) {
+            if (this.source[i] == '\n') {
+                matchedAfter += 1
+            }
+
+            if (matchedAfter == context + 1) {
+                contextEnd = i - 1
+                break
+            }
+
+            if (i + 1 > this.source.length) {
+                contextEnd = this.source.length - 1
+                break
+            }
+        }
+
+        this.source.slice(start - context, end + context)
+
+        let result = colors.dim(this.source.slice(contextStart, start))
+        result += colors.green(this.source.slice(start, end))
+        result += colors.dim(this.source.slice(end, contextEnd))
 
         return result
     }
@@ -72,6 +178,12 @@ export class SourceCode {
             false,
             ts.ScriptKind.TS
         )
+    }
+
+    public match(selector: string): boolean {
+        let r = tsquery.query(this.ast, selector)
+
+        return !!r && r.length > 0
     }
 
     public query(selector: string): any[] {

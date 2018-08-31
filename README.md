@@ -2,7 +2,7 @@
 
 ## Example
 
-```
+```typescript
 import * as path from 'path'
 import { SourceCode } from 'underhill'
 
@@ -41,4 +41,17 @@ example.modifyParent({
 example.logDiff()
 
 example.writeToFile(path.join(__dirname, 'output.ts'))
+```
+
+```typescript
+import { SourceCode } from 'underhill'
+
+let files = await SourceCode.searchFiles(path.join(__dirname, 'my-project'), {
+    selector: 'CallExpression[expression.text=getDefault]',
+})
+
+files.forEach(f => {
+    console.log('\n' + f.path)
+    console.log(f.summary.join('\n---\n'))
+})
 ```

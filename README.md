@@ -1,6 +1,8 @@
 # underhill
 
-## Example
+An opinionated wrapper of [tsquery](https://github.com/phenomnomnominal/tsquery) and some other things. Very early in prototyping so everything is likely to change! :surfer:
+
+## Examples
 
 ```typescript
 import * as path from 'path'
@@ -44,8 +46,6 @@ example.writeToFile(path.join(__dirname, 'output.ts'))
 ```
 
 ```typescript
-import { SourceCode } from 'underhill'
-
 let files = await SourceCode.searchFiles(path.join(__dirname, 'my-project'), {
     selector: 'CallExpression[expression.text=getDefault]',
 })

@@ -7,6 +7,8 @@ import * as jsdiff from 'diff'
 import * as colors from 'colors/safe'
 import * as glob from 'glob'
 import { isArray } from 'util'
+import { uniq, flatten } from 'lodash'
+import { tstemplate } from '@phenomnomnominal/tstemplate'
 
 const prettifyCode = (code: string) =>
     prettier.format(code, {
@@ -21,6 +23,7 @@ type MatchedFile = {
     path: string
     summary?: string[]
     code?: SourceCode
+    exactText?: string[]
 }
 
 type Line = {
@@ -143,6 +146,10 @@ export class SourceCode implements ISourceCode {
         )
     }
 
+    static query(node, selector: string) {
+        return tsquery.query(node, selector)
+    }
+
     static identifier(id: string) {
         return SourceCode.extractFirst(
             `Identifier[text="${id}"]`,
@@ -152,12 +159,42 @@ export class SourceCode implements ISourceCode {
         )
     }
 
+    static logSummaries(
+        files: MatchedFile[],
+        options: {
+            variations: boolean
+        } = null
+    ) {
+        for (let file of files) {
+            let { path, summary } = file
+
+            console.log(colors.black('\n' + path))
+            console.log(summary.join('\n-----\n'))
+        }
+
+        if (options && options.variations) {
+            let variations = uniq(flatten(files.map(f => f.exactText)))
+            console.log(`\n\n${variations.length} Variations\n`)
+            console.log(variations.join('\n-----\n'))
+        }
+
+        console.log(
+            `\n\nFound ${files.reduce(
+                (t, f) => t + f.summary.length,
+                0
+            )} matches across ${files.length} files.`
+        )
+    }
+
     static arrowFunction(func: string) {
         return SourceCode.extractFirst(`ArrowFunction`, func)
     }
 
-    static fromAst(ast) {
-        let c = new SourceCode('', 'ts')
+    static fromAst(ast, type: 'ts' | 'tsx' = 'ts') {
+        let c = new SourceCode('', type)
+        c.ast = ast
+
+        return c
     }
 
     static extractFirst(selector: string, source: string) {
@@ -220,6 +257,7 @@ export class SourceCode implements ISourceCode {
                         file.code = code
                         try {
                             file.summary = r.map(m => code.summarize(m))
+                            file.exactText = r.map(m => code.SC(m).stringify())
                         } catch (e) {}
 
                         result.push(file)
@@ -231,6 +269,38 @@ export class SourceCode implements ISourceCode {
         }
 
         return files
+    }
+
+    public createNode(selector: string, source: string) {
+        let node = SourceCode.extractFirst(selector, source)
+
+        const literals = [
+            'StringLiteral',
+            'TemplateHead',
+            'TemplateTail',
+            'TemplateMiddle',
+            'NumericLiteral',
+            'NoSubstitutionTemplateLiteral',
+        ]
+
+        for (let t of literals) {
+            SourceCode.query(node, t).forEach(s => {
+                this.addLiteral(s, source)
+            })
+        }
+
+        return node
+    }
+
+    public addLiteral(node: any, originalSource: string) {
+        let value = originalSource.slice(node.pos, node.end)
+        let newStart = this.ast.text.length
+        let newEnd = newStart + value.length
+
+        node.pos = newStart
+        node.end = newEnd
+
+        this.ast.text += value
     }
 
     public SC(input: any): ISourceCode {
@@ -271,6 +341,10 @@ export class SourceCode implements ISourceCode {
         }
 
         return result
+    }
+
+    public imports(identifier: string) {
+        return this.match(`ImportSpecifier[name.text=${identifier}]`)
     }
 
     public summarize(match: any[] | string | any) {
@@ -393,8 +467,34 @@ export class SourceCode implements ISourceCode {
 
         try {
             output = prettifyCode(output)
+
+            var diff = jsdiff.diffLines(this.source, output)
+            let allLines: string[] = []
+
+            diff.forEach(d => {
+                if (!d.added && !d.removed) {
+                    allLines = allLines.concat(
+                        this.getLinesSimple(d.value, 'unchanged')
+                    )
+                }
+
+                if (d.added) {
+                    let adds = this.getLinesSimple(d.value, 'add')
+                    allLines = allLines.concat(adds)
+                }
+
+                if (d.removed && d.value === '\n') {
+                    let removes = this.getLinesSimple(d.value, 'remove')
+                    allLines = allLines.concat(removes)
+                }
+            })
+
+            output = allLines.join('\n')
+
             return output
         } catch (e) {
+            console.log("Couldn't prettify " + this.fullPath)
+            console.log(e)
             return output
         }
     }
@@ -409,6 +509,58 @@ export class SourceCode implements ISourceCode {
         let code = this.stringify()
 
         fs.writeFileSync(file, code, 'utf8')
+    }
+
+    private getLinesSimple = (
+        val: string,
+        type: 'unchanged' | 'add' | 'remove'
+    ): string[] => {
+        let result: string[] = []
+        let lines = val.split('\n')
+        for (let i = 0; i < lines.length; i++) {
+            let v = lines[i]
+
+            if (!v && type !== 'unchanged') continue
+
+            result.push(v)
+        }
+
+        return result
+    }
+
+    private getLines = (
+        val: string,
+        type: 'unchanged' | 'add' | 'remove',
+        getNumber: () => number = null
+    ): Line[] => {
+        let spacer = type == 'add' ? '+' : type == 'remove' ? '-' : ' '
+
+        let result: Line[] = []
+        let lines = val.split('\n')
+        for (let i = 0; i < lines.length; i++) {
+            let v = lines[i]
+            if (!v && type == 'unchanged') {
+                v = '  '
+            }
+
+            if (!v) continue
+
+            if (i == lines.length - 1 && v.match(/^\s*$/)) {
+                continue
+            } else {
+                v = `${spacer}${spacer} ${v}`
+                // if (type == 'add') v = colors.green(v)
+                // if (type == 'remove') v = colors.red(v)
+
+                result.push({
+                    value: v,
+                    type,
+                    index: getNumber ? getNumber() : -1,
+                })
+            }
+        }
+
+        return result
     }
 
     public logDiff() {
@@ -429,6 +581,7 @@ export class SourceCode implements ISourceCode {
         let ranges: LineRange[] = []
 
         const saveRange = (lines: Line[]) => {
+            if (!lines[0]) return
             if (lines.length == 1) {
                 ranges.push({
                     start: lines[0].index,
@@ -442,53 +595,21 @@ export class SourceCode implements ISourceCode {
             }
         }
 
-        const getLines = (
-            val: string,
-            type: 'unchanged' | 'add' | 'remove'
-        ): Line[] => {
-            let spacer = type == 'add' ? '+' : type == 'remove' ? '-' : ' '
-
-            let result: Line[] = []
-            let lines = val.split('\n')
-            for (let i = 0; i < lines.length; i++) {
-                let v = lines[i]
-                if (!v && type == 'unchanged') {
-                    v = '  '
-                }
-
-                if (!v) continue
-
-                if (i == lines.length - 1 && v.match(/^\s*$/)) {
-                    continue
-                } else {
-                    v = `${spacer}${spacer} ${v}`
-                    // if (type == 'add') v = colors.green(v)
-                    // if (type == 'remove') v = colors.red(v)
-
-                    result.push({
-                        value: v,
-                        type,
-                        index: getNumber(),
-                    })
-                }
-            }
-
-            return result
-        }
-
         diff.forEach(d => {
             if (!d.added && !d.removed) {
-                allLines = allLines.concat(getLines(d.value, 'unchanged'))
+                allLines = allLines.concat(
+                    this.getLines(d.value, 'unchanged', getNumber)
+                )
             }
 
             if (d.added) {
-                let adds = getLines(d.value, 'add')
+                let adds = this.getLines(d.value, 'add', getNumber)
                 allLines = allLines.concat(adds)
                 saveRange(adds)
             }
 
             if (d.removed && d.value !== '\n') {
-                let removes = getLines(d.value, 'remove')
+                let removes = this.getLines(d.value, 'remove', getNumber)
                 allLines = allLines.concat(removes)
                 saveRange(removes)
             }

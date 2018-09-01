@@ -18,12 +18,15 @@
     "homepage": "https://github.com/farant/underhill#readme",
     "dependencies": {
         "@phenomnomnominal/tsquery": "^2.0.0",
+        "@phenomnomnominal/tstemplate": "^0.1.0",
         "@types/glob": "^5.0.35",
+        "@types/lodash": "^4.14.116",
         "@types/node": "^10.9.4",
         "@types/prettier": "^1.13.2",
         "colors": "^1.3.2",
         "diff": "^3.5.0",
         "glob": "^7.1.3",
+        "lodash": "^4.17.10",
         "prettier": "^1.14.2",
         "typescript": "^3.0.3"
     }

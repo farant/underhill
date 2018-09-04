@@ -150,6 +150,12 @@ export class SourceCode implements ISourceCode {
         return tsquery.query(node, selector)
     }
 
+    static match(node, selector: string) {
+        let result = tsquery.query(node, selector)
+
+        return !!result && result.length > 0
+    }
+
     static identifier(id: string) {
         return SourceCode.extractFirst(
             `Identifier[text="${id}"]`,

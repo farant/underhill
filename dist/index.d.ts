@@ -50,6 +50,13 @@ export declare class SourceCode implements ISourceCode {
             source: string;
         }[];
     }): void;
+    insertBeforeFirstStatementLike(input: {
+        selector: string;
+        items: {
+            type: string;
+            source: string;
+        }[];
+    }): void;
     pushToList(input: {
         node: string;
         listProperty: string;

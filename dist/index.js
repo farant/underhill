@@ -263,6 +263,18 @@ var SourceCode = /** @class */ (function () {
             dotprop.set(node, input.listProperty, newValue);
         }
     };
+    SourceCode.prototype.insertBeforeFirstStatementLike = function (input) {
+        var _this = this;
+        var index = 0;
+        for (var _i = 0, _a = this.ast.statements; _i < _a.length; _i++) {
+            var statement = _a[_i];
+            if (this.SC(statement).match(input.selector)) {
+                break;
+            }
+            index++;
+        }
+        this.ast.statements = this.ast.statements.slice(0, index).concat(input.items.map(function (i) { return _this.createNode(i.type, i.source); }), this.ast.statements.slice(index));
+    };
     SourceCode.prototype.pushToList = function (input) {
         var _this = this;
         var node = this.query(input.node)[0];

@@ -294,6 +294,26 @@ export class SourceCode implements ISourceCode {
         }
     }
 
+    public insertBeforeFirstStatementLike(input: {
+        selector: string
+        items: { type: string; source: string }[]
+    }) {
+        let index = 0
+        for (let statement of this.ast.statements) {
+            if (this.SC(statement).match(input.selector)) {
+                break
+            }
+
+            index++
+        }
+
+        this.ast.statements = [
+            ...this.ast.statements.slice(0, index),
+            ...input.items.map(i => this.createNode(i.type, i.source)),
+            ...this.ast.statements.slice(index),
+        ] as any
+    }
+
     public pushToList(input: {
         node: string
         listProperty: string

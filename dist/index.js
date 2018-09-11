@@ -255,11 +255,20 @@ var SourceCode = /** @class */ (function () {
             });
         });
     };
+    SourceCode.prototype.shiftToList = function (input) {
+        var _this = this;
+        var node = this.query(input.node)[0];
+        if (!!node) {
+            var newValue = input.items.map(function (i) { return _this.createNode(i.type, i.source); }).concat(dotprop.get(node, input.listProperty));
+            dotprop.set(node, input.listProperty, newValue);
+        }
+    };
     SourceCode.prototype.pushToList = function (input) {
         var _this = this;
         var node = this.query(input.node)[0];
         if (!!node) {
-            dotprop.set(node, input.listProperty, dotprop.get(node, input.listProperty).concat(input.items.map(function (i) { return _this.createNode(i.type, i.source); })));
+            var newValue = dotprop.get(node, input.listProperty).concat(input.items.map(function (i) { return _this.createNode(i.type, i.source); }));
+            dotprop.set(node, input.listProperty, newValue);
         }
     };
     SourceCode.prototype.createNode = function (selector, source) {

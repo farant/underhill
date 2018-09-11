@@ -42,6 +42,14 @@ export declare class SourceCode implements ISourceCode {
     static searchFiles(root: string, options?: {
         selector?: string;
     }): Promise<MatchedFile[]>;
+    shiftToList(input: {
+        node: string;
+        listProperty: string;
+        items: {
+            type: string;
+            source: string;
+        }[];
+    }): void;
     pushToList(input: {
         node: string;
         listProperty: string;

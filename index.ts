@@ -277,18 +277,37 @@ export class SourceCode implements ISourceCode {
         return files
     }
 
-    public pushToList(input: {
-        node: string,
-        listProperty: string,
-        items: { type: string, source: string}[] 
+    public shiftToList(input: {
+        node: string
+        listProperty: string
+        items: { type: string; source: string }[]
     }) {
         let node = this.query(input.node)[0]
 
         if (!!node) {
-            dotprop.set(node, input.listProperty, [
+            let newValue = [
+                ...input.items.map(i => this.createNode(i.type, i.source)),
                 ...dotprop.get(node, input.listProperty),
-                ...input.items.map(i => this.createNode(i.type, i.source))
-            ])
+            ]
+
+            dotprop.set(node, input.listProperty, newValue)
+        }
+    }
+
+    public pushToList(input: {
+        node: string
+        listProperty: string
+        items: { type: string; source: string }[]
+    }) {
+        let node = this.query(input.node)[0]
+
+        if (!!node) {
+            let newValue = [
+                ...dotprop.get(node, input.listProperty),
+                ...input.items.map(i => this.createNode(i.type, i.source)),
+            ]
+
+            dotprop.set(node, input.listProperty, newValue)
         }
     }
 

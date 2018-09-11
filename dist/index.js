@@ -45,6 +45,7 @@ var colors = require("colors/safe");
 var glob = require("glob");
 var util_1 = require("util");
 var lodash_1 = require("lodash");
+var dotprop = require("dot-prop");
 var prettifyCode = function (code) {
     return prettier.format(code, {
         tabWidth: 4,
@@ -253,6 +254,13 @@ var SourceCode = /** @class */ (function () {
                 }
             });
         });
+    };
+    SourceCode.prototype.pushToList = function (input) {
+        var _this = this;
+        var node = this.query(input.node)[0];
+        if (!!node) {
+            dotprop.set(node, input.listProperty, dotprop.get(node, input.listProperty).concat(input.items.map(function (i) { return _this.createNode(i.type, i.source); })));
+        }
     };
     SourceCode.prototype.createNode = function (selector, source) {
         var _this = this;

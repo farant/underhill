@@ -42,6 +42,14 @@ export declare class SourceCode implements ISourceCode {
     static searchFiles(root: string, options?: {
         selector?: string;
     }): Promise<MatchedFile[]>;
+    pushToList(input: {
+        node: string;
+        listProperty: string;
+        items: {
+            type: string;
+            source: string;
+        }[];
+    }): void;
     createNode(selector: string, source: string): import("@phenomnomnominal/tsquery/dist/src/tsquery-types").TSQueryNode<ts.Node>;
     addLiteral(node: any, originalSource: string): void;
     SC(input: any): ISourceCode;

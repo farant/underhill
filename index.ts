@@ -8,7 +8,7 @@ import * as colors from 'colors/safe'
 import * as glob from 'glob'
 import { isArray } from 'util'
 import { uniq, flatten } from 'lodash'
-import { tstemplate } from '@phenomnomnominal/tstemplate'
+import * as dotprop from 'dot-prop'
 
 const prettifyCode = (code: string) =>
     prettier.format(code, {
@@ -275,6 +275,21 @@ export class SourceCode implements ISourceCode {
         }
 
         return files
+    }
+
+    public pushToList(input: {
+        node: string,
+        listProperty: string,
+        items: { type: string, source: string}[] 
+    }) {
+        let node = this.query(input.node)[0]
+
+        if (!!node) {
+            dotprop.set(node, input.listProperty, [
+                ...dotprop.get(node, input.listProperty),
+                ...input.items.map(i => this.createNode(i.type, i.source))
+            ])
+        }
     }
 
     public createNode(selector: string, source: string) {

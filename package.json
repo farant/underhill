@@ -1,6 +1,6 @@
 {
     "name": "underhill",
-    "version": "1.0.5",
+    "version": "1.0.6",
     "description": "Tool for transforming Typescript source code",
     "main": "dist/index.js",
     "scripts": {

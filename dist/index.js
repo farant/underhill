@@ -263,6 +263,11 @@ var SourceCode = /** @class */ (function () {
             dotprop.set(node, input.listProperty, newValue);
         }
     };
+    SourceCode.prototype.pushStatement = function (input) {
+        this.ast.statements = this.ast.statements.concat([
+            this.createNode(input.type, input.source),
+        ]);
+    };
     SourceCode.prototype.insertBeforeFirstStatementLike = function (input) {
         var _this = this;
         var index = 0;

@@ -294,6 +294,13 @@ export class SourceCode implements ISourceCode {
         }
     }
 
+    public pushStatement(input: { type: string; source: string }) {
+        this.ast.statements = [
+            ...this.ast.statements,
+            this.createNode(input.type, input.source),
+        ] as any
+    }
+
     public insertBeforeFirstStatementLike(input: {
         selector: string
         items: { type: string; source: string }[]
